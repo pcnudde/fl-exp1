@@ -14,11 +14,12 @@ def prepare_data(num_sites):
     train_splits = random_split(full_train, train_sizes)
     test_splits = random_split(full_test, test_sizes)
     
-    for site_id in range(num_sites):
+    for i in range(num_sites):
+        site_id = i + 1  # 1-indexed site folders
         site_dir = f'/tmp/mnist_experiment/site-{site_id}'
         os.makedirs(site_dir, exist_ok=True)
-        torch.save({'train_indices': train_splits[site_id].indices, 'test_indices': test_splits[site_id].indices}, f'{site_dir}/indices.pt')
-        print(f"Site {site_id}: {len(train_splits[site_id])} train, {len(test_splits[site_id])} test samples")
+        torch.save({'train_indices': train_splits[i].indices, 'test_indices': test_splits[i].indices}, f'{site_dir}/indices.pt')
+        print(f"Site {site_id}: {len(train_splits[i])} train, {len(test_splits[i])} test samples")
 
 if __name__ == '__main__':
     prepare_data(num_sites=3)

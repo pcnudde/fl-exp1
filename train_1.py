@@ -38,7 +38,7 @@ def train_site(site_id, global_state_dict):
     print(f"Site {site_id} - Loss: {loss.item():.4f}, Accuracy: {accuracy:.2f}%")
     return model.state_dict()
 
-if __name__ == '__main__':
+def federated_training():
     num_sites, num_rounds = 3, 5
     
     global_model = SimpleNet()
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     for round_num in range(num_rounds):
         print(f"\nRound {round_num + 1}/{num_rounds}")
         
-        site_state_dicts = [train_site(i, global_model.state_dict()) for i in range(num_sites)]
+        site_state_dicts = [train_site(i, global_model.state_dict()) for i in range(1, num_sites + 1)]
         global_model.load_state_dict({k: torch.stack([sd[k] for sd in site_state_dicts]).mean(0) for k in site_state_dicts[0]})
         
         # Evaluate global model
@@ -54,3 +54,6 @@ if __name__ == '__main__':
         with torch.no_grad():
             correct = sum((global_model(d).argmax(1) == t).sum().item() for d, t in test_loader)
         print(f"Global Accuracy: {100 * correct / 10000:.2f}%")
+
+if __name__ == '__main__':
+    federated_training()

@@ -1,9 +1,12 @@
-# Federated learning with multiprocessing for parallel site training
+# Federated learning simulation with nvflare collab api
 import torch
-import torch.multiprocessing as mp
 from torch import nn, optim
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
+
+from nvflare.fox import fox
+from nvflare.fox.sim import SimEnv
+from nvflare.fox.sys.recipe import FoxRecipe
 
 class SimpleNet(nn.Module):
     def __init__(self):
@@ -14,17 +17,14 @@ class SimpleNet(nn.Module):
     def forward(self, x):
         return self.fc2(torch.relu(self.fc1(x.view(-1, 784))))
 
-def train_site(args):
-    site_id, global_state_dict = args
-    
-    # Load site data
+@fox.collab
+def train_site(global_state_dict):
     full_train = datasets.MNIST('/tmp/flare/dataset/', train=True, download=False, transform=transforms.ToTensor())
     full_test = datasets.MNIST('/tmp/flare/dataset/', train=False, download=False, transform=transforms.ToTensor())
-    indices = torch.load(f'/tmp/mnist_experiment/site-{site_id}/indices.pt')
+    indices = torch.load(f'/tmp/mnist_experiment/{fox.site_name}/indices.pt')
     train_loader = DataLoader(Subset(full_train, indices['train_indices']), batch_size=64, shuffle=True)
     test_loader = DataLoader(Subset(full_test, indices['test_indices']), batch_size=1000)
     
-    # Train
     model = SimpleNet()
     model.load_state_dict(global_state_dict)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -36,32 +36,34 @@ def train_site(args):
         loss.backward()
         optimizer.step()
     
-    # Evaluate
     with torch.no_grad():
         correct = sum((model(data).argmax(1) == target).sum().item() for data, target in test_loader)
     accuracy = 100 * correct / len(indices['test_indices'])
     
-    print(f"Site {site_id} - Loss: {loss.item():.4f}, Accuracy: {accuracy:.2f}%")
+    print(f"{fox.site_name} - Loss: {loss.item():.4f}, Accuracy: {accuracy:.2f}%")
     return model.state_dict()
 
+@fox.algo
 def federated_training():
-    mp.set_start_method('spawn')
-    num_sites, num_rounds = 3, 5
+    num_rounds = 5
     
     global_model = SimpleNet()
     
-    with mp.Pool(num_sites) as pool:
-        for round_num in range(num_rounds):
-            print(f"\nRound {round_num + 1}/{num_rounds}")
-            
-            site_state_dicts = pool.map(train_site, [(i, global_model.state_dict()) for i in range(1, num_sites + 1)])
-            global_model.load_state_dict({k: torch.stack([sd[k] for sd in site_state_dicts]).mean(0) for k in site_state_dicts[0]})
-            
-            # Evaluate global model
-            test_loader = DataLoader(datasets.MNIST('/tmp/flare/dataset/', train=False, transform=transforms.ToTensor()), batch_size=1000)
-            with torch.no_grad():
-                correct = sum((global_model(d).argmax(1) == t).sum().item() for d, t in test_loader)
-            print(f"Global Accuracy: {100 * correct / 10000:.2f}%")
+    for round_num in range(num_rounds):
+        print(f"\nRound {round_num + 1}/{num_rounds}")
+        
+        site_state_dicts = [r for _,r in fox.clients.train_site(global_model.state_dict())] 
+        global_model.load_state_dict({k: torch.stack([sd[k] for sd in site_state_dicts]).mean(0) for k in site_state_dicts[0]})
+        
+        # Evaluate global model
+        test_loader = DataLoader(datasets.MNIST('/tmp/flare/dataset/', train=False, transform=transforms.ToTensor()), batch_size=1000)
+        with torch.no_grad():
+            correct = sum((global_model(d).argmax(1) == t).sum().item() for d, t in test_loader)
+        print(f"Global Accuracy: {100 * correct / 10000:.2f}%")
 
 if __name__ == '__main__':
-    federated_training()
+    recipe = FoxRecipe(job_name="fox training", min_clients=3)
+    run = recipe.execute(SimEnv(num_clients=3))
+
+    print("Job Status:", run.get_status())
+    print("Results at:", run.get_result())
