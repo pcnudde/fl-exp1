@@ -25,10 +25,10 @@ Simple exploration of nvflare. Use trivial MNIST training as example
 - 69 loc
 - much slower than multiprocess version
 - only a few changes needed
--- use the collab decorators
--- get site-id from context instead of via function parameter
--- prep function call and unpack results slightly differently
--- use foxrecipy to start simulation
+   - use the collab decorators
+   - get site-id from context instead of via function parameter
+   - prep function call and unpack results slightly differently
+   - use foxrecipy to start simulation
 
 
 
